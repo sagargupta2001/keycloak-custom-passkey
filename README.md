@@ -10,12 +10,10 @@ This project demonstrates how to integrate **WebAuthn (Passkeys) with Keycloak**
 ## 📌 Features
 
 ✅ Secure authentication using **WebAuthn (Passkeys)** 🔑  
-✅ Custom endpoints for **registering & authenticating passkeys** 🖊️  
-✅ Custom **JWT access tokens** with Keycloak's signing key 🛡️  
+✅ Custom endpoints for **registering & authenticating passkeys** 🖊️   
 ✅ Integration with **Keycloak’s credential store** 🏦  
 ✅ Fully working **frontend UI** for passkey creation 🎨  
-✅ Backend written in **Java with JAX-RS** for Keycloak extensions  
-✅ Uses **RSA private/public key signing** for JWT verification ✍️  
+✅ Backend written in **Java with JAX-RS** for Keycloak extensions✍️  
 
 ---
 
@@ -23,8 +21,8 @@ This project demonstrates how to integrate **WebAuthn (Passkeys) with Keycloak**
 
 ### **1️⃣ Clone the Repository**
 ```sh
-  git clone https://github.com/YOUR_GITHUB_USERNAME/YOUR_REPO_NAME.git
-  cd YOUR_REPO_NAME
+  git clone https://github.com/sagargupta2001/keycloak-custom-passkey
+  cd keycloak-custom-passkey
 ```
 
 ### **2️⃣ Run Keycloak (Docker Recommended)**
@@ -42,13 +40,30 @@ Ensure you have Keycloak running locally.
 4. Add a **User** and enable **WebAuthn Credentials**
 
 ### **4️⃣ Backend Setup (Java API)**
-1. Install dependencies
+### 1. Build the Custom Provider JAR
+
+Compile the Java project into a JAR file:
+
 ```sh
-  mvn clean install
+mvn clean package
 ```
-2. Run the backend
+
+This will generate a JAR file inside the `target/` directory.
+
+### 2. Copy the JAR to Keycloak’s `providers` Directory
+
+Move the JAR file to Keycloak’s `providers/` directory:
+
 ```sh
-  mvn quarkus:dev
+cp target/custom-webauthn-provider.jar /path/to/keycloak/providers/
+```
+
+### 3. Restart Keycloak
+
+Apply the changes by restarting Keycloak:
+
+```sh
+/path/to/keycloak/bin/kc.sh start-dev
 ```
 
 ### **5️⃣ Frontend Setup (React + WebAuthn API)**
@@ -98,40 +113,12 @@ fetch("http://localhost:8000/api/passkey/save", {
 
 ---
 
-## 🔑 Custom JWT Token Generation
-Our backend manually generates JWT access tokens using Keycloak’s signing keys. This ensures secure authentication.
-
-### **🔹 Custom Token Generation Code (Java)**
-```java
-private Response generateTokensResponse(UserModel user) {
-    RealmModel realm = session.getContext().getRealm();
-    KeyManager.ActiveRsaKey activeRsaKey = session.keys().getActiveRsaKey(realm);
-    if (activeRsaKey == null) {
-        return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity("Keycloak signing key not found").build();
-    }
-
-    AccessToken token = createAccessToken(user);
-    String signedToken = encodeJWT(token, activeRsaKey);
-
-    return Response.ok("{\"access_token\": \"" + signedToken + "\"}")
-            .header(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON)
-            .build();
-}
-```
-
-### **🔹 Decode & Verify JWT using Keycloak's Public Key**
-1. Open **[jwt.io](https://jwt.io)**
-2. Paste the JWT token
-3. Fetch Keycloak's **public key** from `http://localhost:8080/realms/YOUR_REALM`
-4. Verify the signature!
-
----
-
 ## 🔧 API Endpoints
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/api/passkey/challenge` | `GET` | Generate WebAuthn challenge |
-| `/api/passkey/save` | `POST` | Save registered passkey |
+| Endpoint | Method | Description                  |
+|----------|--------|------------------------------|
+| `/api/passkey/challenge` | `GET`  | Generate WebAuthn challenge  |
+| `/api/passkey/save` | `POST` | Save registered passkey      |
+| `/api/passkey/get-credential-id` | `GET`  | Get credId & challenge       |
 | `/api/auth/token` | `POST` | Generate custom access token |
 
 ---
@@ -146,8 +133,7 @@ private Response generateTokensResponse(UserModel user) {
 ---
 
 ## 🏗️ Future Improvements
-🚀 Add WebAuthn **login endpoint**  
-🚀 Implement **FIDO2 biometric authentication**  
+🚀 Sign the tokens with keys  
 🚀 Enhance **error handling & logging**  
 
 ---
