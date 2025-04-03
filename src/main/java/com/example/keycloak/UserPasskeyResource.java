@@ -31,14 +31,14 @@ import jakarta.ws.rs.core.Response;
 import org.jboss.logging.Logger;
 import org.keycloak.WebAuthnConstants;
 import org.keycloak.common.util.Base64Url;
-import org.keycloak.common.util.Time;
 import org.keycloak.credential.*;
-import org.keycloak.models.KeycloakSession;
-import org.keycloak.models.RealmModel;
-import org.keycloak.models.UserModel;
+
+import org.keycloak.models.*;
 import org.keycloak.models.credential.WebAuthnCredentialModel;
+import org.keycloak.protocol.oidc.TokenManager;
 import org.keycloak.representations.AccessToken;
 import org.keycloak.representations.RefreshToken;
+import org.keycloak.services.util.DefaultClientSessionContext;
 
 import java.io.UnsupportedEncodingException;
 import java.util.*;
@@ -212,6 +212,7 @@ public class UserPasskeyResource {
         String challenge = request.getChallenge();
 
         boolean isValid = isPasskeyValid(credentialId, authenticatorData, clientDataJSON, signature, challenge, user, realm);
+        logger.info("Passkey validation result -> " + isValid);
 
         if (isValid)
             return generateTokensResponse(user);
@@ -258,39 +259,66 @@ public class UserPasskeyResource {
 
         cred.setAuthenticationRequest(authReq);
         cred.setAuthenticationParameters(authParams);
-
+        logger.info("cred -> " + cred);
+        logger.info("isValid -> " + user.credentialManager().isValid(cred));
         return user.credentialManager().isValid(cred);
     }
 
     private Response generateTokensResponse(UserModel user) {
         try {
-            AccessToken token = createAccessToken(user);
-            RefreshToken refreshToken = new RefreshToken(token);
+            RealmModel realm = session.getContext().getRealm();
+            logger.info("realm --> " + realm.getName());
 
-            String accessTokenString = session.tokens().encode(token);
+            ClientModel client = realm.getClientByClientId("demo-client");
+            if (client == null) {
+                logger.error("Client not found for client_id: demo-client");
+                return buildErrorResponse(Response.Status.INTERNAL_SERVER_ERROR, "Client not found");
+            }
+            logger.info("client --> " + client.getName());
+
+            // ✅ Set the client explicitly in the Keycloak session context
+            session.getContext().setClient(client);  // <-- This is crucial
+
+            // Create user session
+            UserSessionModel userSession = session.sessions().createUserSession(
+                    realm, user, user.getUsername(), "127.0.0.1", "form", true, null, null);
+            logger.info("userSession --> " + userSession);
+
+            // Create client session
+            AuthenticatedClientSessionModel clientSession = userSession.getAuthenticatedClientSessionByClient(client.getId());
+            if (clientSession == null) {
+                clientSession = session.sessions().createClientSession(realm, client, userSession);
+            }
+
+            // Create ClientSessionContext with scope parameter
+            ClientSessionContext clientSessionCtx = DefaultClientSessionContext.fromClientSessionAndScopeParameter(
+                    clientSession, "", session);
+
+            // ✅ Ensure the client context is not null before generating the token
+            if (session.getContext().getClient() == null) {
+                logger.error("Client context is still null after setting.");
+                return buildErrorResponse(Response.Status.INTERNAL_SERVER_ERROR, "Client context is null");
+            }
+
+            // Generate access token
+            TokenManager tokenManager = new TokenManager();
+            AccessToken accessToken = tokenManager.createClientAccessToken(
+                    session, realm, client, user, userSession, clientSessionCtx);
+            logger.info("accessToken -> " + accessToken);
+
+            String accessTokenString = session.tokens().encode(accessToken);
+            RefreshToken refreshToken = new RefreshToken(accessToken);
             String refreshTokenString = session.tokens().encode(refreshToken);
+            logger.info("refreshToken -> " + refreshToken);
 
+            logger.info("Successfully generated token for user: " + user.getUsername());
             return Response.ok("{\"access_token\": \"" + accessTokenString + "\", \"refresh_token\": \"" + refreshTokenString + "\"}")
                     .header(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON)
                     .build();
         } catch (Exception e) {
-            return buildErrorResponse(Response.Status.INTERNAL_SERVER_ERROR, "Token generation failed");
+            logger.error("Token generation failed: " + e.getMessage(), e);
+            return buildErrorResponse(Response.Status.INTERNAL_SERVER_ERROR, "Token generation failed: " + e.getMessage());
         }
-    }
-
-    private AccessToken createAccessToken(UserModel user) {
-        AccessToken token = new AccessToken();
-        token.setSubject(user.getId());
-        token.setPreferredUsername(user.getUsername()); // Add username
-        token.setEmail(user.getEmail()); // Add email if available
-
-        AccessToken.Access realmAccess = new AccessToken.Access();
-        realmAccess.addRole("user"); // Add role if needed
-        token.setRealmAccess(realmAccess);
-
-        token.exp((long) (Time.currentTime() + 300)); // Token expires in 5 minutes
-
-        return token;
     }
 
     private String generateChallenge() {
