@@ -125,7 +125,6 @@ public class UserPasskeyResource {
     @Consumes(MediaType.APPLICATION_JSON)
     @Produces(MediaType.APPLICATION_JSON)
     public Response savePasskey(PasskeyRequest request) throws JsonProcessingException, UnsupportedEncodingException {
-        logger.info("--------------Save passkey initiated--------------");
         if (request.getUsername() == null) {
             return Response.status(Response.Status.BAD_REQUEST)
                     .entity("Username and passkey are required")
@@ -146,17 +145,13 @@ public class UserPasskeyResource {
 
         UserModel user = users.get(0);
 
-        // Get the Base64-encoded clientDataJSON from the request
         String base64ClientDataJSON = request.getClientDataJSON();
 
-        // Decode the Base64 string
         byte[] decodedBytes = Base64.getDecoder().decode(base64ClientDataJSON);
         String decodedClientDataJSON = new String(decodedBytes, "UTF-8");
 
-        // Deserialize the decoded JSON string into a JsonNode
         ObjectMapper objectMapper = new ObjectMapper();
         JsonNode clientData = objectMapper.readTree(decodedClientDataJSON);
-
 
         Origin origin = new Origin(clientData.get("origin").asText());
         String rpId = clientData.get("origin").asText().replace("http://", "").replace("https://", "").split(":")[0];
@@ -177,7 +172,6 @@ public class UserPasskeyResource {
         RegistrationData registrationData = webAuthnRegistrationManager.parse(registrationRequest);
         webAuthnRegistrationManager.validate(registrationData, registrationParameters);
 
-        // Create WebAuthn credential model input
         WebAuthnCredentialModelInput credential = new WebAuthnCredentialModelInput(WebAuthnCredentialModel.TYPE_PASSWORDLESS);
         credential.setAttestedCredentialData(registrationData.getAttestationObject().getAuthenticatorData().getAttestedCredentialData());
         credential.setCount(registrationData.getAttestationObject().getAuthenticatorData().getSignCount());
@@ -187,10 +181,8 @@ public class UserPasskeyResource {
         WebAuthnCredentialProvider webAuthnCredProvider = (WebAuthnCredentialProvider) this.session.getProvider(CredentialProvider.class, WebAuthnPasswordlessCredentialProviderFactory.PROVIDER_ID);
         WebAuthnCredentialModel credentialModel = webAuthnCredProvider.getCredentialModelFromCredentialInput(credential, user.getUsername());
 
-        // Create and store the WebAuthn credential model
         WebAuthnCredentialModel webAuthnCredentialModel = WebAuthnCredentialModel.createFromCredentialModel(credentialModel);
 
-        // Store the credential in Keycloak
         user.credentialManager().createStoredCredential(webAuthnCredentialModel);
 
         return Response.status(Response.Status.CREATED)
@@ -203,44 +195,29 @@ public class UserPasskeyResource {
     @Consumes(MediaType.APPLICATION_JSON)
     @Produces(MediaType.APPLICATION_JSON)
     public Response authenticatePasskey(PasskeyRequest request) throws UnsupportedEncodingException, JsonProcessingException {
-        logger.info("--------------Authenticate passkey initiated--------------");
-
         RealmModel realm = session.getContext().getRealm();
-        logger.info("Realm retrieved: " + realm.getName());
 
-        // Fetch user
         UserModel user = getUserByUsername(realm, request.getUsername());
-        if (user == null) {
-            logger.error("User not found for username: " + request.getUsername());
+        if (user == null)
             return buildErrorResponse(Response.Status.NOT_FOUND, "User not found");
-        }
-        logger.info("User found: " + user.getUsername());
 
-        // Fetch WebAuthn Credential
         WebAuthnCredentialModel webAuthnCredential = getWebAuthnCredential(user, request.getCredentialId());
-        if (webAuthnCredential == null) {
-            logger.error("No passkey found for user: " + request.getUsername());
+        if (webAuthnCredential == null)
             return buildErrorResponse(Response.Status.NOT_FOUND, "No passkey found for user");
-        }
-        logger.info("Passkey found for user.");
 
-        // Convert values before calling validation
         byte[] credentialId = decodeBase64(request.getCredentialId());
         byte[] authenticatorData = decodeBase64(request.getAuthenticatorData());
         byte[] signature = Base64Url.decode(request.getSignature());
         String clientDataJSON = request.getClientDataJSON();
         String challenge = request.getChallenge();
 
-        logger.info("Calling isPasskeyValid...");
         boolean isValid = isPasskeyValid(credentialId, authenticatorData, clientDataJSON, signature, challenge, user, realm);
 
-        if (isValid) {
-            logger.info("Passkey validation successful.");
+        if (isValid)
             return generateTokensResponse(user);
-        } else {
-            logger.error("Invalid passkey for user: " + request.getUsername());
+        else
             return buildErrorResponse(Response.Status.UNAUTHORIZED, "Invalid passkey");
-        }
+
     }
 
     private UserModel getUserByUsername(RealmModel realm, String username) {
@@ -281,9 +258,6 @@ public class UserPasskeyResource {
 
         cred.setAuthenticationRequest(authReq);
         cred.setAuthenticationParameters(authParams);
-
-        logger.info("credId -> " + cred.getCredentialId());
-        logger.info("IS VALID --> " + user.credentialManager().isValid(cred));
 
         return user.credentialManager().isValid(cred);
     }
