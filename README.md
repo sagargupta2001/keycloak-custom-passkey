@@ -12,7 +12,6 @@ This project demonstrates how to integrate **WebAuthn (Passkeys) with Keycloak**
 ✅ Secure authentication using **WebAuthn (Passkeys)** 🔑  
 ✅ Custom endpoints for **registering & authenticating passkeys** 🖊️   
 ✅ Integration with **Keycloak’s credential store** 🏦  
-✅ Fully working **frontend UI** for passkey creation 🎨  
 ✅ Backend written in **Java with JAX-RS** for Keycloak extensions✍️  
 
 ---
@@ -133,7 +132,7 @@ fetch("http://localhost:8000/api/passkey/save", {
 ---
 
 ## 🏗️ Future Improvements
-🚀 Sign the tokens with keys  
+🚀 Unit Testing 
 🚀 Enhance **error handling & logging**  
 
 ---
